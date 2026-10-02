@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor del guardian</title>
+<style>
+  :root { --fondo:#0c0a14; --panel:#15111f; --texto:#dcd6ee; --tenue:#8a83a3; --acento:#3fe0c6; --borde:#2a2440; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --fondo:#e9e6f2; --panel:#ffffff; --texto:#221c38; --tenue:#6b6488; --acento:#0a8f80; --borde:#d3cde6; } }
+  :root[data-theme="dark"] { --fondo:#0c0a14; --panel:#15111f; --texto:#dcd6ee; --tenue:#8a83a3; --acento:#3fe0c6; --borde:#2a2440; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--fondo); color:var(--texto); font:14px/1.4 system-ui, "Segoe UI", sans-serif; overflow:hidden; }
+  #escena { position:fixed; inset:0; }
+  canvas { display:block; width:100%; height:100%; touch-action:none; }
+  #panel { position:fixed; left:16px; top:16px; max-width:calc(100vw - 32px); background:color-mix(in srgb, var(--panel) 88%, transparent); border:1px solid var(--borde); border-radius:12px; padding:12px 14px; backdrop-filter: blur(6px); }
+  #panel h1 { margin:0 0 8px; font-size:15px; font-weight:600; letter-spacing:.2px; }
+  #panel h1 small { color:var(--tenue); font-weight:400; margin-left:6px; }
+  .fila { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 0; }
+  button { font:inherit; color:var(--texto); background:transparent; border:1px solid var(--borde); border-radius:8px; padding:5px 10px; cursor:pointer; }
+  button:hover { border-color:var(--acento); }
+  button[aria-pressed="true"] { border-color:var(--acento); color:var(--acento); }
+  #info { margin-top:8px; color:var(--tenue); font-size:12px; }
+  body.captura #panel { display:none; }
+  #estado { position:fixed; right:16px; bottom:12px; color:var(--tenue); font-size:12px; }
+</style>
+</head>
+<body>
+<div id="escena"></div>
+<div id="panel">
+  <h1>Guardián arcano <small id="dato"></small></h1>
+  <div class="fila" id="anims"></div>
+  <div class="fila" id="vistas"></div>
+  <div class="fila">
+    <button id="bJugar" aria-pressed="true">Animar</button>
+    <button id="bBrillo" aria-pressed="true">Brillo</button>
+    <button id="bRejilla" aria-pressed="true">Suelo</button>
+    <button id="bEsc" aria-pressed="false">Junto a Steve (escala)</button>
+  </div>
+  <div id="info">Arrastra para girar · rueda para acercar · dos dedos o clic derecho para mover</div>
+</div>
+<div id="estado"></div>
+<script>
+  function verError(m) { var e = document.getElementById("estado"); e.style.cssText = "position:fixed;left:8px;top:8px;right:8px;color:#ff8a8a;font-size:14px;white-space:pre-wrap;z-index:9"; e.textContent += "ERROR: " + m + "\n"; }
+  addEventListener("error", function (e) { verError(e.message + " @" + (e.lineno || "")); });
+  addEventListener("unhandledrejection", function (e) { verError(String(e.reason && (e.reason.stack || e.reason))); });
+</script>
+<script src="datos.js"></script>
+<script type="module">
+const paso = (t) => { const e = document.getElementById('estado'); e.textContent += t + ' | '; };
+paso('inicio');
+const T = await import(window.THREE_URL);
+paso('three ' + T.REVISION);
+const D = window.DATOS;
+const params = new URLSearchParams(location.search);
+const captura = params.has("captura");
+if (captura) document.body.classList.add("captura");
+const K = 1 / 16;
+const rad = (g) => g * Math.PI / 180;
+
+// ---------------------------------------------------------------- escena
+const cont = document.getElementById("escena");
+const render = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+render.setPixelRatio(Math.min(devicePixelRatio, 2));
+cont.appendChild(render.domElement);
+const escena = new T.Scene();
+const estiloOscuro = getComputedStyle(document.body).backgroundColor;
+escena.background = new T.Color(estiloOscuro);
+const cam = new T.PerspectiveCamera(32, 1, 0.05, 100);
+escena.add(new T.AmbientLight(0xffffff, 1.15));
+const sol = new T.DirectionalLight(0xffffff, 1.5); sol.position.set(-2, 4, -3); escena.add(sol);
+const relleno = new T.DirectionalLight(0x8899ff, 0.5); relleno.position.set(3, 1, 3); escena.add(relleno);
+const rejilla = new T.GridHelper(6, 24, 0x3a3358, 0x231e38); escena.add(rejilla);
+
+// ---------------------------------------------------------------- texturas
+const cargarTex = (url) => new Promise((ok) => new T.TextureLoader().load(url, (t) => {
+  t.magFilter = T.NearestFilter; t.minFilter = T.NearestFilter; t.colorSpace = T.SRGBColorSpace; t.flipY = true; ok(t);
+}));
+const [texBase, texBrillo] = await Promise.all([cargarTex(D.texBase), cargarTex(D.texBrillo)]);
+paso('texturas');
+const matBase = new T.MeshLambertMaterial({ map: texBase, alphaTest: 0.5, side: T.DoubleSide });
+const matBrillo = new T.MeshBasicMaterial({ map: texBrillo, transparent: true, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, alphaTest: 0.02 });
+
+// ---------------------------------------------------------------- geometria (misma construccion que GeckoLib 4.4: x espejado, orden de vertices y UV por cara)
+const geo = D.geo["minecraft:geometry"][0];
+const TW = geo.description.texture_width, TH = geo.description.texture_height;
+function cuboGeom(c) {
+  const [ox, oy, oz] = c.origin, [sx, sy, sz] = c.size;
+  const x0 = -(ox + sx) * K, x1 = -ox * K, y0 = oy * K, y1 = (oy + sy) * K, z0 = oz * K, z1 = (oz + sz) * K;
+  const V = { BLB: [x0,y0,z0], BRB: [x0,y0,z1], TLB: [x0,y1,z0], TRB: [x0,y1,z1], TLF: [x1,y1,z0], TRF: [x1,y1,z1], BLF: [x1,y0,z0], BRF: [x1,y0,z1] };
+  const Q = {
+    west: ["TRB","TLB","BLB","BRB"], east: ["TLF","TRF","BRF","BLF"], north: ["TLB","TLF","BLF","BLB"],
+    south: ["TRF","TRB","BRB","BRF"], up: ["TRB","TRF","TLF","TLB"], down: ["BLB","BLF","BRF","BRB"],
+  };
+  const pos = [], uvs = [], idx = [];
+  let n = 0;
+  for (const cara of Object.keys(Q)) {
+    const f = c.uv[cara]; if (!f) continue;
+    const [u, v] = f.uv, [w, h] = f.uv_size;
+    const uL = u / TW, uR = (u + w) / TW, vT = 1 - v / TH, vB = 1 - (v + h) / TH;
+    const uvq = [[uR, vT], [uL, vT], [uL, vB], [uR, vB]];
+    Q[cara].forEach((nombre, i) => { pos.push(...V[nombre]); uvs.push(...uvq[i]); });
+    idx.push(n, n + 1, n + 2, n, n + 2, n + 3); n += 4;
+  }
+  const g = new T.BufferGeometry();
+  g.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new T.Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+const mZ = (a) => new T.Matrix4().makeRotationZ(a), mY = (a) => new T.Matrix4().makeRotationY(a), mX = (a) => new T.Matrix4().makeRotationX(a);
+const trasl = (x, y, z) => new T.Matrix4().makeTranslation(x, y, z);
+const rotacion = (rx, ry, rz) => mZ(rz).multiply(mY(ry)).multiply(mX(rx));   // Z, luego Y, luego X (como mulPose de GeckoLib)
+
+const huesos = {}, raiz = new T.Group(); escena.add(raiz);
+const glows = [];
+for (const b of geo.bones) {
+  const o = new T.Object3D(); o.matrixAutoUpdate = false;
+  o.userData = { def: b };
+  huesos[b.name] = o;
+}
+for (const b of geo.bones) (b.parent ? huesos[b.parent] : raiz).add(huesos[b.name]);
+for (const b of geo.bones) {
+  for (const c of (b.cubes || [])) {
+    const g = cuboGeom(c);
+    const m = new T.Mesh(g, matBase); m.matrixAutoUpdate = false;
+    if (c.rotation) {
+      const [px, py, pz] = c.pivot, [rx, ry, rz] = c.rotation;
+      m.matrix.copy(trasl(-px * K, py * K, pz * K).multiply(rotacion(rad(-rx), rad(-ry), rad(rz))).multiply(trasl(px * K, -py * K, -pz * K)));
+    }
+    const gl = new T.Mesh(g, matBrillo); gl.matrixAutoUpdate = false; gl.renderOrder = 5; glows.push(gl);
+    m.add(gl);
+    huesos[b.name].add(m);
+  }
+}
+
+// ---------------------------------------------------------------- animacion (mismas reglas de signo que GeckoLib: X e Y de rotacion se niegan, X de posicion se niega)
+const anims = D.anim.animations;
+function muestrear(claves, t) {
+  const ks = Object.keys(claves).map(Number).sort((a, b) => a - b);
+  const g = (k) => claves[Object.keys(claves).find((s) => Number(s) === k)];
+  if (t <= ks[0]) return g(ks[0]);
+  if (t >= ks[ks.length - 1]) return g(ks[ks.length - 1]);
+  let i = 0; while (ks[i + 1] < t) i++;
+  const a = g(ks[i]), z = g(ks[i + 1]), u = (t - ks[i]) / (ks[i + 1] - ks[i]);
+  return a.map((v, j) => v + (z[j] - v) * u);
+}
+const ambiente = anims.runico || null;        // capa que corre siempre (halo y flotar de las placas), como un segundo controlador en el juego
+function poner(nombre, tiempo) {
+  const A = nombre ? anims[nombre] : null;
+  const dur = A ? A.animation_length : 1;
+  const t = A && A.loop === true ? tiempo % dur : Math.min(tiempo, dur);
+  const ta = ambiente ? tiempo % ambiente.animation_length : 0;
+  for (const b of geo.bones) {
+    const o = huesos[b.name];
+    const est = b.rotation || [0, 0, 0];
+    let rx = -est[0], ry = -est[1], rz = est[2];       // grados, ya con el signo de GeckoLib
+    let ax = 0, ay = 0, az = 0, sx = 1, sy = 1, sz = 1;
+    const c = A && A.bones && A.bones[b.name];
+    const ca = ambiente && nombre !== "death" && ambiente.bones[b.name];
+    const rot = (c && c.rotation) ? muestrear(c.rotation, t) : ((ca && ca.rotation) ? muestrear(ca.rotation, ta) : null);
+    const pos = (c && c.position) ? muestrear(c.position, t) : ((ca && ca.position) ? muestrear(ca.position, ta) : null);
+    const esc = (c && c.scale) ? muestrear(c.scale, t) : null;
+    if (rot) { rx += -rot[0]; ry += -rot[1]; rz += rot[2]; }
+    if (pos) { ax = pos[0]; ay = pos[1]; az = pos[2]; }
+    if (esc) { sx = esc[0]; sy = esc[1]; sz = esc[2]; }
+    const pv = [-b.pivot[0] * K, b.pivot[1] * K, b.pivot[2] * K];
+    const M = trasl(-ax * K, ay * K, az * K).multiply(trasl(...pv)).multiply(rotacion(rad(rx), rad(ry), rad(rz))).multiply(new T.Matrix4().makeScale(sx, sy, sz)).multiply(trasl(-pv[0], -pv[1], -pv[2]));
+    o.matrix.copy(M);
+  }
+  raiz.updateMatrixWorld(true);
+}
+
+// ---------------------------------------------------------------- camara
+const vistas = { frente: [0, 0], "tres_cuartos": [-38, 12], lado: [-90, 6], atras: [180, 8], arriba: [-25, 60] };
+let yaw = 0, cab = 6, dist = 5.6, objetivo = new T.Vector3(0, 1.05, 0);
+function aplicarCamara() {
+  const y = rad(yaw), p = rad(cab);
+  cam.position.set(objetivo.x + Math.sin(y) * Math.cos(p) * -dist, objetivo.y + Math.sin(p) * dist, objetivo.z - Math.cos(y) * Math.cos(p) * dist);
+  cam.lookAt(objetivo);
+}
+function irA(nombre) { [yaw, cab] = vistas[nombre]; aplicarCamara(); marcar("vistas", nombre); }
+function tamano() { const w = cont.clientWidth, h = cont.clientHeight; render.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+addEventListener("resize", tamano); tamano();
+
+let arrastre = null;
+render.domElement.addEventListener("pointerdown", (e) => { arrastre = { x: e.clientX, y: e.clientY, boton: e.button }; render.domElement.setPointerCapture(e.pointerId); });
+render.domElement.addEventListener("pointerup", () => { arrastre = null; });
+render.domElement.addEventListener("pointermove", (e) => {
+  if (!arrastre) return;
+  const dx = e.clientX - arrastre.x, dy = e.clientY - arrastre.y; arrastre.x = e.clientX; arrastre.y = e.clientY;
+  if (arrastre.boton === 2 || e.shiftKey) { objetivo.y = Math.max(0, Math.min(2.4, objetivo.y + dy * 0.004)); }
+  else { yaw -= dx * 0.4; cab = Math.max(-10, Math.min(80, cab + dy * 0.3)); }
+  aplicarCamara();
+});
+render.domElement.addEventListener("wheel", (e) => { e.preventDefault(); dist = Math.max(1.4, Math.min(9, dist * (1 + Math.sign(e.deltaY) * 0.08))); aplicarCamara(); }, { passive: false });
+render.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// ---------------------------------------------------------------- interfaz
+let animActual = params.get("anim") || (anims.idle ? "idle" : Object.keys(anims)[0]);
+let jugando = !params.has("t"); let reloj = params.has("t") ? Number(params.get("t")) : 0;
+function marcar(grupo, nombre) { document.querySelectorAll("#" + grupo + " button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.n === nombre))); }
+const cA = document.getElementById("anims");
+["(quieta)", ...Object.keys(anims).filter((n) => n !== "runico")].forEach((n) => { const b = document.createElement("button"); b.textContent = n; b.dataset.n = n; b.onclick = () => { animActual = n === "(quieta)" ? null : n; reloj = 0; marcar("anims", n); }; cA.appendChild(b); });
+const cV = document.getElementById("vistas");
+Object.keys(vistas).forEach((n) => { const b = document.createElement("button"); b.textContent = n; b.dataset.n = n; b.onclick = () => irA(n); cV.appendChild(b); });
+marcar("anims", animActual || "(quieta)");
+const alt = (b, f) => { b.onclick = () => { const v = b.getAttribute("aria-pressed") !== "true"; b.setAttribute("aria-pressed", String(v)); f(v); }; };
+alt(document.getElementById("bJugar"), (v) => { jugando = v; });
+alt(document.getElementById("bBrillo"), (v) => glows.forEach((g) => { g.visible = v; }));
+alt(document.getElementById("bRejilla"), (v) => { rejilla.visible = v; });
+let steve = null;
+alt(document.getElementById("bEsc"), (v) => {
+  if (!steve) {   // Steve de 1,8 bloques hecho con cajas, solo como regla de escala
+    steve = new T.Group();
+    const mat = new T.MeshLambertMaterial({ color: 0x4a86c8 });
+    const caja = (w, h, d, x, y, z, c) => { const m = new T.Mesh(new T.BoxGeometry(w, h, d), new T.MeshLambertMaterial({ color: c || 0x4a86c8 })); m.position.set(x, y, z); steve.add(m); };
+    caja(0.5, 0.5, 0.5, 0, 1.55, 0, 0xc99a74); caja(0.5, 0.75, 0.25, 0, 1.025, 0, 0x2aa6a0); caja(0.25, 0.75, 0.25, 0.375, 1.025, 0, 0xc99a74); caja(0.25, 0.75, 0.25, -0.375, 1.025, 0, 0xc99a74);
+    caja(0.25, 0.75, 0.25, 0.125, 0.375, 0, 0x3b3f9a); caja(0.25, 0.75, 0.25, -0.125, 0.375, 0, 0x3b3f9a);
+    steve.position.set(1.4, 0, 0); escena.add(steve);
+  }
+  steve.visible = v;
+});
+document.getElementById("bEsc").setAttribute("aria-pressed", "false");
+document.getElementById("dato").textContent = D.resumen || "";
+paso('huesos ' + Object.keys(huesos).length);
+irA(params.get("cam") || "tres_cuartos");
+if (params.has("dist")) { dist = Number(params.get("dist")); aplicarCamara(); }
+if (params.has("y")) { objetivo.y = Number(params.get("y")); aplicarCamara(); }
+if (params.get("brillo") === "0") glows.forEach((g) => { g.visible = false; });
+if (params.get("steve") === "1") document.getElementById("bEsc").click();
+
+let ultimo = performance.now();
+function bucle(ahora) {
+  const dt = (ahora - ultimo) / 1000; ultimo = ahora;
+  if (jugando) reloj += dt;
+  poner(animActual, reloj);
+  render.render(escena, cam);
+  if (!captura) requestAnimationFrame(bucle);
+}
+if (captura) {
+  poner(animActual, reloj); render.render(escena, cam);
+  paso("render ok");
+  // en modo captura el lienzo WebGL no siempre sale en la foto de Edge sin ventana: se pasa a una imagen normal
+  const foto = new Image(); foto.src = render.domElement.toDataURL("image/png");
+  foto.style.cssText = "position:fixed;inset:0;width:100%;height:100%;z-index:3";
+  document.body.appendChild(foto);
+  document.title = "listo";
+} else requestAnimationFrame(bucle);
+</script>
+</body>
+</html>

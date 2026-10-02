@@ -1,0 +1,4 @@
+certifi
+ddgs
+google-genai
+requests

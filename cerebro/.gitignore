@@ -1,0 +1,12 @@
+# Estado y sensores que se escriben mientras corre (el puente entre el mod y el cerebro)
+*.json
+!cobalt_config.json
+!tests/fixtures_java/*.json
+*.jsonl
+*.tmp
+*.bak
+*.png
+chat_history.txt
+blueprints/
+schematics/
+diagnostico/

@@ -1,0 +1,323 @@
+<title>Guardián arcano</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Una sola mirada, a propósito: violeta profundo y verde azulado, como el propio modelo. Todos los colores salen de estos tokens. */
+  :root {
+    --suelo: #0b0913;
+    --panel: rgba(21, 16, 42, 0.82);
+    --linea: #2c2350;
+    --tinta: #e4def5;
+    --tenue: #9188b0;
+    --acento: #3fe0c6;
+    --acento-osc: #0e8f82;
+    --violeta: #6a4cb0;
+    --display: "Marcellus", "Iowan Old Style", Georgia, serif;
+    --cuerpo: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+    --dato: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--suelo); color: var(--tinta); font: 14px/1.45 var(--cuerpo); overflow: hidden; }
+  #escena { position: fixed; inset: 0; }
+  #escena canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  #escena canvas:active { cursor: grabbing; }
+  .ui { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; gap: 12px; padding: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+  .ui > * { pointer-events: auto; }
+  header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 24px; }
+  h1 { margin: 0; font: 400 clamp(22px, 4.2vw, 34px)/1.1 var(--display); letter-spacing: 0.02em; text-wrap: balance; }
+  h1 small { display: block; margin-top: 4px; font: 400 12px/1.3 var(--dato); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tenue); }
+  .pestanas { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pestanas button { padding: 7px 13px; }
+  button { font: 500 13px/1 var(--cuerpo); color: var(--tinta); background: var(--panel); border: 1px solid var(--linea); border-radius: 6px; padding: 8px 12px; cursor: pointer; backdrop-filter: blur(6px); }
+  button:hover { border-color: var(--acento-osc); }
+  button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+  button[aria-pressed="true"], button[aria-selected="true"] { color: var(--suelo); background: var(--acento); border-color: var(--acento); }
+  .controles { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: end; }
+  .grupo { background: var(--panel); border: 1px solid var(--linea); border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px); }
+  .grupo h2 { margin: 0 0 8px; font: 500 11px/1 var(--dato); letter-spacing: 0.1em; text-transform: uppercase; color: var(--tenue); }
+  .fila { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fila + h2 { margin-top: 12px; }
+  .fila button { background: transparent; }
+  .fila button[aria-pressed="true"] { background: var(--acento); }
+  dl { margin: 0; display: grid; grid-template-columns: auto auto; gap: 4px 18px; font: 400 12px/1.3 var(--dato); }
+  dt { color: var(--tenue); }
+  dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: var(--tinta); }
+  .pie { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--tenue); max-width: 68ch; }
+  #error { position: fixed; left: 16px; right: 16px; top: 80px; color: #ff9b9b; font: 13px/1.4 var(--dato); white-space: pre-wrap; z-index: 9; }
+  @media (min-width: 900px) {
+    .ui { grid-template-columns: 350px minmax(0, 1fr); grid-template-rows: auto 1fr; }
+    header { grid-column: 1 / -1; }
+    .ui > div:not(.controles) { display: none; }
+    .controles { grid-template-columns: 1fr; align-self: end; align-content: end; max-height: 100%; overflow-y: auto; }
+    .pie { grid-column: auto; }
+  }
+  @media (max-width: 720px) {
+    .controles { grid-template-columns: 1fr; }
+    dl { grid-template-columns: auto auto auto auto; }
+    dd { text-align: left; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+<div id="escena"></div>
+<div class="ui">
+  <header>
+    <h1 id="titulo">Guardián arcano<small id="subtitulo">Cobalt · vista previa</small></h1>
+    <div class="pestanas" role="tablist" aria-label="Modelo" id="pestanas"></div>
+  </header>
+  <div></div>
+  <div class="controles">
+    <div class="grupo">
+      <h2>Animación</h2>
+      <div class="fila" id="anims"></div>
+      <h2>Cámara</h2>
+      <div class="fila" id="vistas"></div>
+      <div class="fila" style="margin-top:10px">
+        <button id="bJugar" aria-pressed="true">Animar</button>
+        <button id="bBrillo" aria-pressed="true">Brillo de runas</button>
+        <button id="bSuelo" aria-pressed="true">Suelo</button>
+        <button id="bEsc" aria-pressed="false" hidden>Junto a Steve</button>
+      </div>
+    </div>
+    <div class="grupo"><h2>Ficha</h2><dl id="ficha"></dl></div>
+    <p class="pie">Arrastra para girar · rueda para acercar · clic derecho o Mayús para subir y bajar. La vista replica el modo en que GeckoLib gira y coloca las piezas; el brillo es una aproximación del que se ve dentro del juego.</p>
+  </div>
+</div>
+<div id="error"></div>
+<script>
+  window.addEventListener("error", function (e) { document.getElementById("error").textContent += "Error: " + e.message + "\n"; });
+  window.addEventListener("unhandledrejection", function (e) { document.getElementById("error").textContent += "Error: " + String(e.reason && (e.reason.stack || e.reason)) + "\n"; });
+  window.DATOS = /*DATOS*/null;
+</script>
+<script type="module">
+import * as T from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js";
+
+const D = window.DATOS;
+const K = 1 / 16;
+const rad = (g) => g * Math.PI / 180;
+const params = new URLSearchParams(location.search);
+
+const INFO = {
+  nox:      { nombre: "Guardián arcano", sub: "Cobalt · personaje", pestana: "Guardián", cam: { dist: 5.6, y: 1.05 }, anim: "idle", steve: true },
+  plasma:   { nombre: "Orbe de plasma", sub: "Habilidad · proyectil", pestana: "Plasma", cam: { dist: 1.7, y: 0.3 }, anim: "spin" },
+  emp_wave: { nombre: "Onda de runas", sub: "Habilidad · pulso EMP", pestana: "Onda EMP", cam: { dist: 15, y: 0 }, anim: "expand", camara: "tres_cuartos" },
+  drone:    { nombre: "Dron arcano", sub: "Habilidad · enjambre", pestana: "Dron", cam: { dist: 1.7, y: 0.3 }, anim: "spin" },
+};
+
+// ---------------------------------------------------------------- escena
+const cont = document.getElementById("escena");
+const render = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+render.setPixelRatio(Math.min(devicePixelRatio, 2));
+cont.appendChild(render.domElement);
+const escena = new T.Scene();
+escena.background = new T.Color(0x0b0913);
+const cam = new T.PerspectiveCamera(32, 1, 0.05, 200);
+escena.add(new T.AmbientLight(0xffffff, 1.15));
+const sol = new T.DirectionalLight(0xffffff, 1.5); sol.position.set(-2, 4, -3); escena.add(sol);
+const relleno = new T.DirectionalLight(0x8899ff, 0.5); relleno.position.set(3, 1, 3); escena.add(relleno);
+const rejilla = new T.GridHelper(40, 160, 0x3a3358, 0x1d1833); escena.add(rejilla);
+
+const cargarTex = (url) => new Promise((ok, ko) => new T.TextureLoader().load(url, (t) => {
+  t.magFilter = T.NearestFilter; t.minFilter = T.NearestFilter; t.colorSpace = T.SRGBColorSpace; ok(t);
+}, undefined, ko));
+
+// ---------------------------------------------------------------- matrices (mismas reglas que GeckoLib 4.4)
+const mZ = (a) => new T.Matrix4().makeRotationZ(a), mY = (a) => new T.Matrix4().makeRotationY(a), mX = (a) => new T.Matrix4().makeRotationX(a);
+const trasl = (x, y, z) => new T.Matrix4().makeTranslation(x, y, z);
+const rotacion = (rx, ry, rz) => mZ(rz).multiply(mY(ry)).multiply(mX(rx));   // Z, luego Y, luego X
+
+function cuboGeom(c, TW, TH) {
+  const [ox, oy, oz] = c.origin, [sx, sy, sz] = c.size;
+  const x0 = -(ox + sx) * K, x1 = -ox * K, y0 = oy * K, y1 = (oy + sy) * K, z0 = oz * K, z1 = (oz + sz) * K;
+  const V = { BLB: [x0,y0,z0], BRB: [x0,y0,z1], TLB: [x0,y1,z0], TRB: [x0,y1,z1], TLF: [x1,y1,z0], TRF: [x1,y1,z1], BLF: [x1,y0,z0], BRF: [x1,y0,z1] };
+  const Q = { west: ["TRB","TLB","BLB","BRB"], east: ["TLF","TRF","BRF","BLF"], north: ["TLB","TLF","BLF","BLB"], south: ["TRF","TRB","BRB","BRF"], up: ["TRB","TRF","TLF","TLB"], down: ["BLB","BLF","BRF","BRB"] };
+  const pos = [], uvs = [], idx = [];
+  let n = 0;
+  for (const cara of Object.keys(Q)) {
+    const f = c.uv[cara]; if (!f) continue;
+    const [u, v] = f.uv, [w, h] = f.uv_size;
+    const uL = u / TW, uR = (u + w) / TW, vT = 1 - v / TH, vB = 1 - (v + h) / TH;
+    const uvq = [[uR, vT], [uL, vT], [uL, vB], [uR, vB]];
+    Q[cara].forEach((nombre, i) => { pos.push(...V[nombre]); uvs.push(...uvq[i]); });
+    idx.push(n, n + 1, n + 2, n, n + 2, n + 3); n += 4;
+  }
+  const g = new T.BufferGeometry();
+  g.setAttribute("position", new T.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new T.Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+
+const cacheClaves = new WeakMap();
+function muestrear(canal, t) {
+  let ks = cacheClaves.get(canal);
+  if (!ks) { ks = Object.keys(canal).map((s) => [Number(s), canal[s]]).sort((a, b) => a[0] - b[0]); cacheClaves.set(canal, ks); }
+  if (t <= ks[0][0]) return ks[0][1];
+  if (t >= ks[ks.length - 1][0]) return ks[ks.length - 1][1];
+  let i = 0; while (ks[i + 1][0] < t) i++;
+  const [t0, a] = ks[i], [t1, z] = ks[i + 1], u = (t - t0) / (t1 - t0);
+  return a.map((v, j) => v + (z[j] - v) * u);
+}
+
+// ---------------------------------------------------------------- un modelo montado
+const montados = {};
+async function montar(clave) {
+  if (montados[clave]) return montados[clave];
+  const d = D[clave];
+  const geo = d.geo["minecraft:geometry"][0];
+  const TW = geo.description.texture_width, TH = geo.description.texture_height;
+  const [texBase, texBrillo] = await Promise.all([cargarTex(d.texBase), cargarTex(d.texBrillo)]);
+  const matBase = new T.MeshLambertMaterial({ map: texBase, alphaTest: 0.5, side: T.DoubleSide });
+  const matBrillo = new T.MeshBasicMaterial({ map: texBrillo, transparent: true, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, alphaTest: 0.02 });
+  const raiz = new T.Group();
+  const huesos = {}, glows = [];
+  let altoMax = 0, cubos = 0;
+  for (const b of geo.bones) { const o = new T.Object3D(); o.matrixAutoUpdate = false; huesos[b.name] = o; }
+  for (const b of geo.bones) (b.parent ? huesos[b.parent] : raiz).add(huesos[b.name]);
+  for (const b of geo.bones) {
+    for (const c of (b.cubes || [])) {
+      cubos++; altoMax = Math.max(altoMax, c.origin[1] + c.size[1]);
+      const g = cuboGeom(c, TW, TH);
+      const m = new T.Mesh(g, matBase); m.matrixAutoUpdate = false;
+      if (c.rotation) {
+        const [px, py, pz] = c.pivot, [rx, ry, rz] = c.rotation;
+        m.matrix.copy(trasl(-px * K, py * K, pz * K).multiply(rotacion(rad(-rx), rad(-ry), rad(rz))).multiply(trasl(px * K, -py * K, -pz * K)));
+      }
+      const gl = new T.Mesh(g, matBrillo); gl.matrixAutoUpdate = false; gl.renderOrder = 5; glows.push(gl); m.add(gl);
+      huesos[b.name].add(m);
+    }
+  }
+  const anims = d.anim.animations;
+  const ficha = [
+    ["Alto", (altoMax / 16).toFixed(2).replace(".", ",") + " bloques"],
+    ["Piezas", cubos + " cubos"],
+    ["Huesos", String(geo.bones.length)],
+    ["Textura", TW + "×" + TH + " px"],
+    ["Animaciones", String(Object.keys(anims).filter((n) => n !== "runico").length)],
+  ];
+  return (montados[clave] = { clave, geo, raiz, huesos, glows, anims, ambiente: anims.runico || null, ficha });
+}
+
+function poner(m, nombre, tiempo) {
+  const A = nombre ? m.anims[nombre] : null;
+  const dur = A ? A.animation_length : 1;
+  let t = 0;
+  if (A) t = A.loop === true ? tiempo % dur : Math.min(tiempo % (dur + 0.9), dur);   // las de una vez se repiten con una pausa
+  const amb = m.ambiente, ta = amb ? tiempo % amb.animation_length : 0;
+  for (const b of m.geo.bones) {
+    const o = m.huesos[b.name];
+    const est = b.rotation || [0, 0, 0];
+    let rx = -est[0], ry = -est[1], rz = est[2];
+    let ax = 0, ay = 0, az = 0, sx = 1, sy = 1, sz = 1;
+    const c = A && A.bones && A.bones[b.name];
+    const ca = amb && nombre !== "death" && amb.bones[b.name];
+    const rot = (c && c.rotation) ? muestrear(c.rotation, t) : ((ca && ca.rotation) ? muestrear(ca.rotation, ta) : null);
+    const pos = (c && c.position) ? muestrear(c.position, t) : ((ca && ca.position) ? muestrear(ca.position, ta) : null);
+    const esc = (c && c.scale) ? muestrear(c.scale, t) : null;
+    if (rot) { rx += -rot[0]; ry += -rot[1]; rz += rot[2]; }
+    if (pos) { ax = pos[0]; ay = pos[1]; az = pos[2]; }
+    if (esc) { sx = esc[0]; sy = esc[1]; sz = esc[2]; }
+    const pv = [-b.pivot[0] * K, b.pivot[1] * K, b.pivot[2] * K];
+    o.matrix.copy(trasl(-ax * K, ay * K, az * K).multiply(trasl(...pv)).multiply(rotacion(rad(rx), rad(ry), rad(rz))).multiply(new T.Matrix4().makeScale(sx, sy, sz)).multiply(trasl(-pv[0], -pv[1], -pv[2])));
+  }
+  m.raiz.updateMatrixWorld(true);
+}
+
+// ---------------------------------------------------------------- camara
+const vistas = { frente: [0, 0], tres_cuartos: [-38, 12], lado: [-90, 6], atras: [180, 8], arriba: [-25, 62] };
+const NOMBRE_VISTA = { frente: "Frente", tres_cuartos: "Tres cuartos", lado: "Lado", atras: "Espalda", arriba: "Desde arriba" };
+let yaw = -38, cab = 12, dist = 5.6, objetivo = new T.Vector3(0, 1.05, 0);
+function aplicarCamara() {
+  const y = rad(yaw), p = rad(cab);
+  cam.position.set(objetivo.x + Math.sin(y) * Math.cos(p) * -dist, objetivo.y + Math.sin(p) * dist, objetivo.z - Math.cos(y) * Math.cos(p) * dist);
+  cam.lookAt(objetivo);
+}
+function tamano() {
+  const w = cont.clientWidth, h = cont.clientHeight;
+  render.setSize(w, h, false); cam.aspect = w / h;
+  if (w >= 900) cam.setViewOffset(w, h, -175, 0, w, h);            // columna de controles a la izquierda
+  else cam.setViewOffset(w, h, 0, Math.round(h * 0.16), w, h);       // controles abajo: se sube al personaje
+  cam.updateProjectionMatrix();
+}
+addEventListener("resize", tamano); tamano();
+
+let arrastre = null;
+const lienzo = render.domElement;
+lienzo.addEventListener("pointerdown", (e) => { arrastre = { x: e.clientX, y: e.clientY, boton: e.button }; lienzo.setPointerCapture(e.pointerId); });
+lienzo.addEventListener("pointerup", () => { arrastre = null; });
+lienzo.addEventListener("pointermove", (e) => {
+  if (!arrastre) return;
+  const dx = e.clientX - arrastre.x, dy = e.clientY - arrastre.y; arrastre.x = e.clientX; arrastre.y = e.clientY;
+  if (arrastre.boton === 2 || e.shiftKey) objetivo.y = Math.max(-0.5, Math.min(3, objetivo.y + dy * 0.004 * (dist / 5)));
+  else { yaw -= dx * 0.4; cab = Math.max(-10, Math.min(85, cab + dy * 0.3)); }
+  aplicarCamara(); marcar("vistas", null);
+});
+lienzo.addEventListener("wheel", (e) => { e.preventDefault(); dist = Math.max(0.8, Math.min(40, dist * (1 + Math.sign(e.deltaY) * 0.08))); aplicarCamara(); }, { passive: false });
+lienzo.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// ---------------------------------------------------------------- interfaz
+let actual = null, animActual = null, jugando = true, reloj = 0, brillo = true, steve = null;
+const $ = (id) => document.getElementById(id);
+function marcar(grupo, nombre) { document.querySelectorAll("#" + grupo + " button").forEach((b) => b.setAttribute(grupo === "pestanas" ? "aria-selected" : "aria-pressed", String(b.dataset.n === nombre))); }
+function irA(nombre) { [yaw, cab] = vistas[nombre]; aplicarCamara(); marcar("vistas", nombre); }
+
+$("vistas").replaceChildren(...Object.keys(vistas).map((n) => { const b = document.createElement("button"); b.textContent = NOMBRE_VISTA[n]; b.dataset.n = n; b.setAttribute("aria-pressed", "false"); b.onclick = () => irA(n); return b; }));
+
+async function elegir(clave) {
+  const m = await montar(clave);
+  if (actual) escena.remove(actual.raiz);
+  actual = m; escena.add(m.raiz);
+  const info = INFO[clave];
+  $("titulo").firstChild.textContent = info.nombre; $("subtitulo").textContent = info.sub;
+  marcar("pestanas", clave);
+  m.glows.forEach((g) => { g.visible = brillo; });
+  const nombres = Object.keys(m.anims).filter((n) => n !== "runico");
+  $("anims").replaceChildren(...["(quieto)", ...nombres].map((n) => { const b = document.createElement("button"); b.textContent = n === "(quieto)" ? n : n.replaceAll("_", " "); b.dataset.n = n; b.setAttribute("aria-pressed", "false"); b.onclick = () => { animActual = n === "(quieto)" ? null : n; reloj = 0; marcar("anims", n); }; return b; }));
+  animActual = nombres.includes(info.anim) ? info.anim : nombres[0]; reloj = 0; marcar("anims", animActual);
+  $("ficha").replaceChildren(...m.ficha.flatMap(([k, v]) => { const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; return [dt, dd]; }));
+  dist = info.cam.dist; objetivo.set(0, info.cam.y, 0); irA(info.camara || "tres_cuartos"); dist = info.cam.dist; aplicarCamara();
+  $("bEsc").hidden = !info.steve;
+  if (steve) steve.visible = info.steve && $("bEsc").getAttribute("aria-pressed") === "true";
+}
+
+$("pestanas").replaceChildren(...Object.keys(INFO).filter((k) => D[k]).map((k) => { const b = document.createElement("button"); b.textContent = INFO[k].pestana; b.dataset.n = k; b.setAttribute("role", "tab"); b.setAttribute("aria-selected", "false"); b.onclick = () => elegir(k); return b; }));
+const alternar = (id, f) => { const b = $(id); b.onclick = () => { const v = b.getAttribute("aria-pressed") !== "true"; b.setAttribute("aria-pressed", String(v)); f(v); }; };
+alternar("bJugar", (v) => { jugando = v; });
+alternar("bBrillo", (v) => { brillo = v; if (actual) actual.glows.forEach((g) => { g.visible = v; }); });
+alternar("bSuelo", (v) => { rejilla.visible = v; });
+alternar("bEsc", (v) => {
+  if (!steve) {   // Steve de 1,8 bloques hecho con cajas: solo una regla de escala
+    steve = new T.Group();
+    const caja = (w, h, d, x, y, z, c) => { const mm = new T.Mesh(new T.BoxGeometry(w, h, d), new T.MeshLambertMaterial({ color: c })); mm.position.set(x, y, z); steve.add(mm); };
+    caja(0.5, 0.5, 0.5, 0, 1.55, 0, 0xc99a74); caja(0.5, 0.75, 0.25, 0, 1.025, 0, 0x2aa6a0); caja(0.25, 0.75, 0.25, 0.375, 1.025, 0, 0xc99a74); caja(0.25, 0.75, 0.25, -0.375, 1.025, 0, 0xc99a74);
+    caja(0.25, 0.75, 0.25, 0.125, 0.375, 0, 0x3b3f9a); caja(0.25, 0.75, 0.25, -0.125, 0.375, 0, 0x3b3f9a);
+    steve.position.set(1.4, 0, 0); escena.add(steve);
+  }
+  steve.visible = v;
+});
+
+const inicial = params.get("modelo") && D[params.get("modelo")] ? params.get("modelo") : "nox";
+await elegir(inicial);
+if (params.has("anim") && actual.anims[params.get("anim")]) { animActual = params.get("anim"); marcar("anims", animActual); }
+if (params.has("cam") && vistas[params.get("cam")]) irA(params.get("cam"));
+if (params.has("dist")) { dist = Number(params.get("dist")); aplicarCamara(); }
+if (params.has("y")) { objetivo.y = Number(params.get("y")); aplicarCamara(); }
+if (params.has("t")) { jugando = false; reloj = Number(params.get("t")); $("bJugar").setAttribute("aria-pressed", "false"); }
+
+let ultimo = performance.now();
+const reducido = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (reducido) { jugando = false; $("bJugar").setAttribute("aria-pressed", "false"); }
+function bucle(ahora) {
+  const dt = Math.min(0.1, (ahora - ultimo) / 1000); ultimo = ahora;
+  if (jugando) reloj += dt;
+  poner(actual, animActual, reloj);
+  render.render(escena, cam);
+  if (params.has("captura")) {   // para las fotos de revisión con Edge sin ventana: el lienzo WebGL se pasa a una imagen normal
+    const foto = new Image(); foto.src = render.domElement.toDataURL("image/png");
+    foto.style.cssText = "position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none";
+    cont.appendChild(foto); document.title = "listo"; return;
+  }
+  requestAnimationFrame(bucle);
+}
+requestAnimationFrame(bucle);
+window.__listo = true;
+</script>

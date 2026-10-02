@@ -1,0 +1,27 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="cobaltbot"
+version="1.0.0"
+displayName="Cobalt Mod - Nox"
+credits="Desarrollado por Diego"
+authors="Diego"
+description='''
+Un mod de RPG avanzado que añade a Nox, una entidad invocable con animaciones de GeckoLib, sistema de inmunidad, regeneración automática y carga persistente de chunks.
+'''
+
+[[dependencies.cobaltmod]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.cobaltmod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1]"
+ordering="NONE"
+side="BOTH"
