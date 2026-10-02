@@ -69,4 +69,7 @@ Proyecto personal en desarrollo. Limitaciones conocidas:
 - Pensado para Windows y para un solo jugador como dueño de Cobalt.
 - Las rutas de los proveedores en la nube se probaron con clientes simulados, no con una sesión larga de uso real.
 - Hay funciones marcadas como experimentales y apagadas por defecto, como la importación de schematics.
-- Sin licencia de uso: todos los derechos reservados. El código se publica para consulta.
+
+## Licencia
+
+Copyright (c) 2026 Diego Gonzalez Rodriguez. Todos los derechos reservados. El código se publica solo para consulta y evaluación; para cualquier otro uso hace falta permiso por escrito. Ver [LICENSE](LICENSE).
